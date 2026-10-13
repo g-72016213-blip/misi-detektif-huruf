@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🌈 Misi Detektif Huruf 🔎</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        :root {
+            --pastel-blue: #BAE1FF;
+            --pastel-yellow: #FFFFBA;
+            --pastel-pink: #FFB3BA;
+            --pastel-green: #B3F5BC;
+            --pastel-purple: #E6B3FF;
+        }
+
+        body {
+            font-family: 'Comic Neue', cursive, sans-serif;
+            background: linear-gradient(135deg, var(--pastel-blue), var(--pastel-pink));
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+        }
+
+        #game-board {
+            touch-action: none; /* Crucial for preventing scrolling while dragging */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .grid-cell {
+            transition: all 0.2s ease;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .grid-cell.selected-temp {
+            background-color: var(--pastel-yellow);
+            border-color: #FFD700;
+            transform: scale(1.05);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .grid-cell.found {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: #1e3a8a; /* Tailwind blue-900 */
+            border-color: #3b82f6;
+        }
+
+        .grid-cell.hint-anim {
+            animation: pulseHint 2s infinite;
+        }
+
+        .word-item.found-word {
+            text-decoration: line-through;
+            color: #10b981; /* Tailwind emerald-500 */
+            background-color: #d1fae5;
+            border-color: #34d399;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2) rotate(3deg); }
+            100% { transform: scale(1) rotate(0); }
+        }
+
+        @keyframes pulseHint {
+            0% { background-color: white; transform: scale(1); }
+            50% { background-color: var(--pastel-yellow); transform: scale(1.15); box-shadow: 0 0 15px var(--pastel-yellow); }
+            100% { background-color: white; transform: scale(1); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        /* Custom Scrollbar for word list */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Print Styles for Certificate */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #certificate-area, #certificate-area * {
+                visibility: visible;
+            }
+            #certificate-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <svg width="0" height="0" class="hidden">
+        <defs>
+            <g id="detective-icon">
+                <!-- Simple SVG Detective -->
+                <circle cx="50" cy="50" r="45" fill="#FFD700" /> <!-- Face -->
+                <path d="M20,40 Q50,20 80,40" fill="none" stroke="#333" stroke-width="4"/> <!-- Hat brim -->
+                <path d="M30,40 L30,15 Q50,5 70,15 L70,40 Z" fill="#8B4513" /> <!-- Hat top -->
+                <circle cx="35" cy="55" r="5" fill="#333" /> <!-- Eye L -->
+                <circle cx="65" cy="55" r="5" fill="#333" /> <!-- Eye R -->
+                <path d="M40,70 Q50,80 60,70" fill="none" stroke="#333" stroke-width="4" stroke-linecap="round"/> <!-- Smile -->
+                <!-- Magnifying glass -->
+                <circle cx="75" cy="75" r="15" fill="#E0F7FA" stroke="#333" stroke-width="4" opacity="0.8"/>
+                <line x1="85" y1="85" x2="100" y2="100" stroke="#333" stroke-width="6" stroke-linecap="round"/>
+            </g>
+            <g id="star-icon">
+                <path d="M50,5 L61,35 L95,35 L67,54 L78,85 L50,65 L22,85 L33,54 L5,35 L39,35 Z" fill="#FFD700" stroke="#B8860B" stroke-width="2" stroke-linejoin="round"/>
+            </g>
+        </defs>
+    </svg>
+
+    <div id="screen-welcome" class="flex-1 flex flex-col items-center justify-center p-4">
+        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl max-w-md w-full text-center border-4 border-white">
+            <div class="w-32 h-32 mx-auto mb-4 floating">
+                <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg"><use href="#detective-icon"></use></svg>
+            </div>
+            
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-600 mb-2 drop-shadow-sm">🌈 MISI DETEKTIF HURUF 🔎</h1>
+            <p class="text-lg text-slate-600 font-bold mb-6">Pendidikan Khas - Bahasa Melayu</p>
+            
+            <div class="mb-6">
+                <label for="student-name" class="block text-xl font-bold text-slate-700 mb-2">Nama Detektif:</label>
+                <input type="text" id="student-name" placeholder="Masukkan nama kamu..." class="w-full text-center text-2xl font-bold p-4 rounded-2xl border-4 border-blue-200 focus:border-blue-500 focus:outline-none transition shadow-inner placeholder-slate-300">
+            </div>
+            
+            <button onclick="startGame()" class="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold text-2xl py-4 rounded-2xl shadow-lg transform active:scale-95 transition-all">
+                🚀 MULA BERMAIN!
+            </button>
+            
+            <button onclick="showHowToPlay()" class="mt-4 text-blue-500 font-bold hover:text-blue-700 underline underline-offset-4">
+                ❓ Cara Bermain
+            </button>
+        </div>
+    </div>
+
+    <div id="screen-game" class="hidden flex-1 flex flex-col max-w-6xl mx-auto w-full p-2 md:p-4 gap-4">
+        
+        <!-- Header: Score & Info -->
+        <header class="bg-white/90 rounded-2xl p-3 shadow-md border-2 border-white flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 hidden sm:block">
+                    <svg viewBox="0 0 100 100" class="w-full h-full"><use href="#detective-icon"></use></svg>
+                </div>
+                <div>
+                    <h2 class="text-xl md:text-2xl font-bold text-blue-700 leading-tight">Detektif <span id="display-name" class="text-purple-600">Murid</span></h2>
+                    <p class="text-sm font-bold text-slate-500">Cari perkataan tersembunyi!</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 bg-yellow-100 px-4 py-2 rounded-xl border-2 border-yellow-400">
+                <svg viewBox="0 0 100 100" class="w-8 h-8"><use href="#star-icon"></use></svg>
+                <span class="text-2xl font-extrabold text-yellow-700"><span id="score-text">0</span> / 10</span>
+            </div>
+        </header>
+
+        <!-- Main Game Area: Grid & Sidebar -->
+        <main class="flex flex-col lg:flex-row gap-4 flex-1">
+            
+            <!-- Left/Top: Game Board -->
+            <section class="flex-1 bg-white/80 backdrop-blur rounded-3xl p-3 sm:p-5 shadow-xl border-4 border-blue-300 flex flex-col items-center justify-center touch-none">
+                
+                <!-- Feedback Message -->
+                <div id="feedback-msg" class="h-12 w-full text-center text-lg sm:text-xl font-bold text-blue-800 flex items-center justify-center mb-2 px-4 rounded-xl transition-all duration-300 opacity-0">
+                    Sedia!
+                </div>
+
+                <!-- The Grid -->
+                <div id="game-board" class="grid gap-1 sm:gap-2 p-2 sm:p-4 bg-slate-100 rounded-2xl shadow-inner max-w-[500px] w-full aspect-square">
+                    <!-- JS will inject cells here -->
+                </div>
+            </section>
+
+            <!-- Right/Bottom: Word List & Controls -->
+            <section class="lg:w-80 flex flex-col gap-4">
+                
+                <!-- Word List Panel -->
+                <div class="bg-white/90 rounded-3xl p-4 shadow-xl border-4 border-pink-300 flex-1 flex flex-col max-h-[40vh] lg:max-h-none">
+                    <h3 class="text-xl font-bold text-pink-700 text-center mb-3 border-b-2 border-pink-100 pb-2">Senarai Perkataan</h3>
+                    <div id="word-list" class="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-wrap gap-2 lg:flex-col lg:flex-nowrap content-start">
+                        <!-- JS will inject words here -->
+                    </div>
+                </div>
+
+                <!-- Controls Panel -->
+                <div class="bg-white/90 rounded-3xl p-4 shadow-xl border-4 border-green-300 grid grid-cols-2 gap-2">
+                    <button onclick="useHint()" class="col-span-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold py-3 rounded-xl shadow transition transform active:scale-95 flex items-center justify-center gap-2 text-lg">
+                        💡 Beri Petunjuk
+                    </button>
+                    
+                    <button onclick="restartGame(false)" class="bg-rose-400 hover:bg-rose-500 text-white font-bold py-3 rounded-xl shadow transition transform active:scale-95 text-sm sm:text-base">
+                        🔄 Mula Semula
+                    </button>
+                    
+                    <button onclick="backToHome()" class="bg-slate-400 hover:bg-slate-500 text-white font-bold py-3 rounded-xl shadow transition transform active:scale-95 text-sm sm:text-base">
+                        🏠 Tukar Nama
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="screen-success" class="hidden flex-1 flex flex-col items-center justify-center p-4">
+        <div id="certificate-area" class="bg-white p-8 md:p-12 rounded-3xl shadow-2xl max-w-2xl w-full text-center border-[12px] border-double border-yellow-400 relative overflow-hidden">
+            
+            <!-- Decorative Corners -->
+            <div class="absolute top-4 left-4 w-12 h-12 text-pink-300"><svg viewBox="0 0 100 100"><use href="#star-icon"></use></svg></div>
+            <div class="absolute top-4 right-4 w-12 h-12 text-blue-300"><svg viewBox="0 0 100 100"><use href="#star-icon"></use></svg></div>
+            
+            <h1 class="text-4xl md:text-5xl font-extrabold text-blue-600 mb-2 uppercase tracking-wide">Sijil Pencapaian</h1>
+            <h2 class="text-2xl font-bold text-yellow-500 mb-8">Detektif Hebat!</h2>
+            
+            <p class="text-xl text-slate-600 font-bold mb-4">Sijil ini dianugerahkan kepada:</p>
+            <h3 id="cert-name" class="text-4xl md:text-5xl font-extrabold text-purple-700 mb-8 border-b-4 border-dashed border-purple-200 inline-block pb-2 px-8">Nama Murid</h3>
+            
+            <p class="text-xl text-slate-700 font-bold leading-relaxed mb-8">
+                Kerana berjaya menyelesaikan<br>
+                <span class="text-2xl text-pink-600">🌈 Misi Detektif Huruf 🔎</span><br>
+                dan mencari kesemua <span class="text-blue-600 text-2xl">10</span> perkataan!
+            </p>
+            
+            <div class="flex justify-between items-end mt-8 border-t-2 border-slate-200 pt-6 px-4">
+                <div class="text-left">
+                    <p class="font-bold text-slate-500">Tarikh:</p>
+                    <p id="cert-date" class="font-bold text-lg text-slate-800">1 Jan 2026</p>
+                </div>
+                <div class="w-24 h-24">
+                    <svg viewBox="0 0 100 100" class="w-full h-full opacity-80"><use href="#detective-icon"></use></svg>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-8 flex gap-4 no-print flex-wrap justify-center">
+            <button onclick="window.print()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold text-xl py-3 px-8 rounded-2xl shadow-lg transform active:scale-95 transition-all flex items-center gap-2">
+                🖨️ Cetak Sijil
+            </button>
+            <button onclick="restartGame(true)" class="bg-green-500 hover:bg-green-600 text-white font-bold text-xl py-3 px-8 rounded-2xl shadow-lg transform active:scale-95 transition-all flex items-center gap-2">
+                🎮 Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <div id="modal-howto" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative border-4 border-blue-400">
+            <button onclick="closeHowToPlay()" class="absolute top-4 right-4 text-slate-400 hover:text-red-500 text-2xl font-bold bg-slate-100 rounded-full w-10 h-10 flex items-center justify-center pb-1">×</button>
+            
+            <h2 class="text-3xl font-bold text-blue-600 mb-6 flex items-center gap-2">
+                ❓ Cara Bermain
+            </h2>
+            
+            <ul class="space-y-4 text-lg font-bold text-slate-700">
+                <li class="flex gap-3">
+                    <span class="text-2xl">👀</span>
+                    <span>Lihat senarai perkataan di sebelah kanan/bawah.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="text-2xl">👆</span>
+                    <span><strong>Tekan dan tarik (seret)</strong> pada petak huruf untuk memilih perkataan.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="text-2xl">➡️</span>
+                    <span>Perkataan tersembunyi secara <strong>LURUS</strong> (kiri ke kanan) atau <strong>MENEGAK</strong> (atas ke bawah) sahaja.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="text-2xl">💡</span>
+                    <span>Gunakan butang <strong>Petunjuk</strong> jika tidak jumpa perkataan.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="text-2xl">🌟</span>
+                    <span>Cari semua 10 perkataan untuk dapat sijil!</span>
+                </li>
+            </ul>
+            
+            <button onclick="closeHowToPlay()" class="w-full mt-8 bg-blue-500 text-white font-bold text-xl py-3 rounded-xl shadow hover:bg-blue-600 transition">
+                Faham!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Audio Synthesizer for text-to-speech
+        function speakWord(word) {
+            if ('speechSynthesis' in window) {
+                // Stop any ongoing speech
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(word);
+                utterance.lang = 'ms-MY'; // Set language to Malay
+                utterance.rate = 0.8; // Slightly slower for special education
+                utterance.pitch = 1.2; // Slightly higher/friendly pitch
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+    </script>
+
+    <script>
+        // Game Configuration
+        const WORDS = ["API", "ATOK", "UBI", "ULI", "OTAK", "OREN", "EMAK", "ENAM", "IKAN", "ITIK"];
+        const GRID_SIZE = 10;
+        const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#B3FFB3', '#BAE1FF', '#E6B3FF', '#FFB3FF', '#B3FFFF', '#FFC8A2', '#D5AAFF'];
+
+        // State variables
+        let grid = [];
+        let wordPlacements = []; // To store {word, startRow, startCol, endRow, endCol, color}
+        let foundWords = [];
+        let playerName = "";
+        let isDragging = false;
+        let dragStartCell = null;
+        let dragCurrentCell = null;
+        let currentSelectedCells = [];
+
+        // DOM Elements
+        const screens = {
+            welcome: document.getElementById('screen-welcome'),
+            game: document.getElementById('screen-game'),
+            success: document.getElementById('screen-success')
+        };
+        const boardEl = document.getElementById('game-board');
+        const wordListEl = document.getElementById('word-list');
+        const scoreTextEl = document.getElementById('score-text');
+        const feedbackMsgEl = document.getElementById('feedback-msg');
+
+
+        function generateGrid() {
+            let success = false;
+            let attempts = 0;
+            const maxAttempts = 100;
+
+            while (!success && attempts < maxAttempts) {
+                attempts++;
+                // Initialize empty grid
+                grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(''));
+                wordPlacements = [];
+                success = true;
+
+                // Sort words longest to shortest to make placement easier
+                const sortedWords = [...WORDS].sort((a, b) => b.length - a.length);
+
+                for (let i = 0; i < sortedWords.length; i++) {
+                    const word = sortedWords[i];
+                    if (!placeWord(word, i)) {
+                        success = false;
+                        break; // Try again
+                    }
+                }
+            }
+
+            if (!success) {
+                console.error("Gagal menjana grid selepas banyak cubaan. Sila muat semula.");
+                // Fallback: reload page or show error
+                alert("Ralat membina teka-teki. Sila muat semula halaman.");
+                return;
+            }
+
+            // Fill empty spaces
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (grid[r][c] === '') {
+                        grid[r][c] = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+                    }
+                }
+            }
+        }
+
+        function placeWord(word, index) {
+            const directions = ['H', 'V']; // Horizontal (L to R), Vertical (T to B)
+            
+            // Try placing word randomly up to 50 times
+            for (let t = 0; t < 50; t++) {
+                const dir = directions[Math.floor(Math.random() * directions.length)];
+                const r = Math.floor(Math.random() * GRID_SIZE);
+                const c = Math.floor(Math.random() * GRID_SIZE);
+
+                if (canPlace(word, r, c, dir)) {
+                    // Place it
+                    for (let i = 0; i < word.length; i++) {
+                        if (dir === 'H') grid[r][c + i] = word[i];
+                        if (dir === 'V') grid[r + i][c] = word[i];
+                    }
+                    
+                    wordPlacements.push({
+                        word: word,
+                        startR: r,
+                        startC: c,
+                        endR: dir === 'H' ? r : r + word.length - 1,
+                        endC: dir === 'H' ? c + word.length - 1 : c,
+                        color: COLORS[index % COLORS.length]
+                    });
+                    
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function canPlace(word, r, c, dir) {
+            const len = word.length;
+            if (dir === 'H' && c + len > GRID_SIZE) return false;
+            if (dir === 'V' && r + len > GRID_SIZE) return false;
+
+            for (let i = 0; i < len; i++) {
+                let currR = r + (dir === 'V' ? i : 0);
+                let currC = c + (dir === 'H' ? i : 0);
+                
+                // If cell is not empty AND doesn't match the required letter, invalid
+                if (grid[currR][currC] !== '' && grid[currR][currC] !== word[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+
+        function renderBoard() {
+            boardEl.innerHTML = '';
+            boardEl.style.gridTemplateColumns = `repeat(${GRID_SIZE}, minmax(0, 1fr))`;
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell bg-white border-2 border-slate-200 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-700 aspect-square';
+                    cell.textContent = grid[r][c];
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    // Interaction events (Pointer events for mouse + touch support)
+                    cell.addEventListener('pointerdown', handlePointerDown);
+                    cell.addEventListener('pointerenter', handlePointerEnter);
+                    
+                    boardEl.appendChild(cell);
+                }
+            }
+
+            // Global pointer up event to catch ending drag anywhere on screen
+            document.addEventListener('pointerup', handlePointerUp);
+            // Prevent default touch actions (like scrolling) on the board itself
+            boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        }
+
+        function renderWordList() {
+            wordListEl.innerHTML = '';
+            // Sort alphabetically for list display
+            const displayWords = [...WORDS].sort();
+            
+            displayWords.forEach(word => {
+                const isFound = foundWords.includes(word);
+                const item = document.createElement('div');
+                item.className = `word-item px-3 py-2 sm:py-3 rounded-xl border-2 font-bold text-base sm:text-lg lg:text-xl flex justify-between items-center transition-all ${
+                    isFound 
+                    ? 'found-word' 
+                    : 'bg-white border-slate-200 text-slate-600 shadow-sm'
+                }`;
+                item.dataset.word = word;
+                
+                item.innerHTML = `
+                    <span>${word}</span>
+                    <div class="flex items-center gap-2">
+                        ${isFound ? '<span class="text-xl">✓</span>' : ''}
+                        <button onclick="speakWord('${word}')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition ${isFound ? 'hidden' : ''}" title="Dengar">
+                            🔊
+                        </button>
+                    </div>
+                `;
+                
+                // Allow clicking list to play audio directly
+                if (!isFound) {
+                     // small fix: stop propagation on button to avoid double click issue
+                     item.querySelector('button').addEventListener('click', (e) => e.stopPropagation());
+                }
+
+                wordListEl.appendChild(item);
+            });
+            
+            scoreTextEl.textContent = foundWords.length;
+        }
+
+        function showFeedback(msg, type = 'info') {
+            feedbackMsgEl.textContent = msg;
+            feedbackMsgEl.className = 'h-12 w-full text-center text-lg sm:text-xl font-bold flex items-center justify-center mb-2 px-4 rounded-xl transition-all duration-300 opacity-100';
+            
+            if (type === 'success') {
+                feedbackMsgEl.classList.add('bg-green-100', 'text-green-800', 'border-2', 'border-green-300');
+            } else if (type === 'error') {
+                feedbackMsgEl.classList.add('bg-red-100', 'text-red-800', 'border-2', 'border-red-300');
+            } else {
+                feedbackMsgEl.classList.add('bg-blue-100', 'text-blue-800', 'border-2', 'border-blue-300');
+            }
+
+            setTimeout(() => {
+                feedbackMsgEl.style.opacity = '0';
+                setTimeout(() => {
+                    feedbackMsgEl.className = 'h-12 w-full text-center text-lg sm:text-xl font-bold text-blue-800 flex items-center justify-center mb-2 px-4 rounded-xl transition-all duration-300 opacity-0';
+                }, 300);
+            }, 3000);
+        }
+
+
+        function getCell(r, c) {
+            return document.querySelector(`.grid-cell[data-r="${r}"][data-c="${c}"]`);
+        }
+
+        // For touch devices, pointerenter doesn't fire when dragging over elements.
+        // We need elementFromPoint on touchmove attached to board.
+        boardEl.addEventListener('pointermove', (e) => {
+            if (!isDragging) return;
+            // Prevent default to stop scrolling
+            e.preventDefault();
+            
+            // Get element under pointer
+            const element = document.elementFromPoint(e.clientX, e.clientY);
+            if (element && element.classList.contains('grid-cell')) {
+                const r = parseInt(element.dataset.r);
+                const c = parseInt(element.dataset.c);
+                
+                // Only update if moved to a new cell
+                if (!dragCurrentCell || dragCurrentCell.r !== r || dragCurrentCell.c !== c) {
+                     updateSelectionPath({r: dragStartCell.r, c: dragStartCell.c}, {r, c});
+                }
+            }
+        });
+
+        function handlePointerDown(e) {
+            e.preventDefault(); // Stop default touch actions
+            // Clear any lingering hints
+            document.querySelectorAll('.hint-anim').forEach(el => el.classList.remove('hint-anim'));
+            
+            isDragging = true;
+            const r = parseInt(e.target.dataset.r);
+            const c = parseInt(e.target.dataset.c);
+            dragStartCell = { r, c };
+            
+            // Release capture so elementFromPoint works correctly
+            e.target.releasePointerCapture(e.pointerId);
+            
+            updateSelectionPath(dragStartCell, dragStartCell);
+        }
+
+        function handlePointerEnter(e) {
+            // Used mostly by mouse
+            if (!isDragging) return;
+            const r = parseInt(e.target.dataset.r);
+            const c = parseInt(e.target.dataset.c);
+            updateSelectionPath(dragStartCell, { r, c });
+        }
+
+        function handlePointerUp(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            if (currentSelectedCells.length > 0) {
+                checkSelection();
+            }
+            
+            dragStartCell = null;
+            dragCurrentCell = null;
+        }
+
+        function clearSelectionVisuals() {
+            document.querySelectorAll('.selected-temp').forEach(el => {
+                el.classList.remove('selected-temp');
+            });
+            currentSelectedCells = [];
+        }
+
+        function updateSelectionPath(start, end) {
+            clearSelectionVisuals();
+            dragCurrentCell = end;
+
+            // Only allow horizontal or vertical selection
+            let rStep = 0, cStep = 0, steps = 0;
+
+            if (start.r === end.r) {
+                // Horizontal
+                cStep = end.c > start.c ? 1 : -1;
+                steps = Math.abs(end.c - start.c);
+            } else if (start.c === end.c) {
+                // Vertical
+                rStep = end.r > start.r ? 1 : -1;
+                steps = Math.abs(end.r - start.r);
+            } else {
+                // Diagonal or invalid - just highlight start cell
+                const cell = getCell(start.r, start.c);
+                if(cell) {
+                    cell.classList.add('selected-temp');
+                    currentSelectedCells = [{r: start.r, c: start.c}];
+                }
+                return;
+            }
+
+            for (let i = 0; i <= steps; i++) {
+                const r = start.r + (i * rStep);
+                const c = start.c + (i * cStep);
+                const cell = getCell(r, c);
+                if (cell) {
+                    cell.classList.add('selected-temp');
+                    currentSelectedCells.push({r, c});
+                }
+            }
+        }
+
+        function checkSelection() {
+            if (currentSelectedCells.length < 2) {
+                clearSelectionVisuals();
+                return; // Too short
+            }
+
+            // Build string from selection
+            let selectedWordStr = "";
+            let reverseWordStr = "";
+            currentSelectedCells.forEach(pos => {
+                selectedWordStr += grid[pos.r][pos.c];
+            });
+            // MBPK: Sometimes they select backwards, let's accept it if it forms the word
+            reverseWordStr = selectedWordStr.split('').reverse().join('');
+
+            let matchedWord = null;
+            let matchType = 0; // 1 normal, 2 reverse
+
+            if (WORDS.includes(selectedWordStr)) {
+                matchedWord = selectedWordStr;
+                matchType = 1;
+            } else if (WORDS.includes(reverseWordStr)) {
+                matchedWord = reverseWordStr;
+                matchType = 2;
+            }
+
+            if (matchedWord) {
+                if (foundWords.includes(matchedWord)) {
+                    showFeedback("Perkataan ini sudah dijumpai!", "info");
+                    clearSelectionVisuals();
+                } else {
+                    // Success!
+                    foundWords.push(matchedWord);
+                    
+                    // Find placement info to get assigned color
+                    const placementInfo = wordPlacements.find(p => p.word === matchedWord);
+                    const color = placementInfo ? placementInfo.color : '#FFB3BA';
+
+                    // Apply permanent found styling
+                    currentSelectedCells.forEach(pos => {
+                        const cell = getCell(pos.r, pos.c);
+                        cell.classList.remove('selected-temp');
+                        cell.classList.add('found');
+                        cell.style.backgroundColor = color;
+                    });
+                    
+                    currentSelectedCells = []; // Reset
+                    
+                    showFeedback(`HEBAT! Kamu jumpa perkataan ${matchedWord}!`, "success");
+                    speakWord("Hebat! " + matchedWord); // Audio feedback
+                    renderWordList();
+                    checkWin();
+                }
+            } else {
+                // Incorrect
+                showFeedback("Cuba lagi!", "error");
+                clearSelectionVisuals();
+            }
+        }
+
+
+        function startGame() {
+            const nameInput = document.getElementById('student-name');
+            playerName = nameInput.value.trim();
+            
+            if (playerName === "") {
+                nameInput.classList.add('border-red-500', 'animate-pulse');
+                setTimeout(() => nameInput.classList.remove('border-red-500', 'animate-pulse'), 1000);
+                return;
+            }
+
+            document.getElementById('display-name').textContent = playerName;
+            
+            switchScreen('game');
+            restartGame(false); // false means don't ask, just setup
+        }
+
+        function restartGame(force = false) {
+            foundWords = [];
+            generateGrid();
+            renderBoard();
+            renderWordList();
+            showFeedback("Selamat mencari!", "info");
+            
+            if(force) {
+                switchScreen('game');
+            }
+        }
+
+        function backToHome() {
+            switchScreen('welcome');
+            document.getElementById('student-name').value = '';
+        }
+
+        function checkWin() {
+            if (foundWords.length === WORDS.length) {
+                setTimeout(() => {
+                    endGame();
+                }, 1000); // Wait for last animation
+            }
+        }
+
+        function endGame() {
+            switchScreen('success');
+            
+            // Populate Certificate
+            document.getElementById('cert-name').textContent = playerName;
+            
+            const today = new Date();
+            const options = { day: 'numeric', month: 'long', year: 'numeric' };
+            document.getElementById('cert-date').textContent = today.toLocaleDateString('ms-MY', options);
+
+            // Confetti
+            fireConfetti();
+            
+            // Audio
+            if ('speechSynthesis' in window) {
+                speakWord("Tahniah, Detektif Hebat! Kamu berjaya.");
+            }
+        }
+
+
+        function switchScreen(screenName) {
+            Object.values(screens).forEach(s => s.classList.add('hidden'));
+            screens[screenName].classList.remove('hidden');
+        }
+
+        function useHint() {
+            // Find a word not yet found
+            const unFoundWords = WORDS.filter(w => !foundWords.includes(w));
+            if (unFoundWords.length === 0) return;
+
+            // Pick first unfound word
+            const targetWord = unFoundWords[0];
+            const placement = wordPlacements.find(p => p.word === targetWord);
+            
+            if (placement) {
+                // Highlight starting letter
+                const startCell = getCell(placement.startR, placement.startC);
+                startCell.classList.add('hint-anim');
+                
+                showFeedback(`Petunjuk: Cari huruf mula untuk ${targetWord}`, "info");
+                
+                // Remove hint animation after 2.5s
+                setTimeout(() => {
+                    startCell.classList.remove('hint-anim');
+                }, 2500);
+            }
+        }
+
+        function fireConfetti() {
+            var duration = 3000;
+            var end = Date.now() + duration;
+
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: ['#BAE1FF', '#FFFFBA', '#FFB3BA']
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: ['#B3F5BC', '#E6B3FF', '#FFB3BA']
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        }
+
+        // Modal Controls
+        function showHowToPlay() {
+            document.getElementById('modal-howto').classList.remove('hidden');
+        }
+        function closeHowToPlay() {
+            document.getElementById('modal-howto').classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>
